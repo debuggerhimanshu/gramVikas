@@ -1,6 +1,6 @@
 # Gram Vikas
 
-Citizen-first Gram Panchayat portal. The current deliverable is a React frontend prototype with illustrative Bhanpur data. The backend tree below is a proposed next phase; those backend files and services do not exist yet.
+Citizen-first Gram Panchayat portal with a React frontend and an Express + TypeScript backend backed by PostgreSQL. The current presentation build connects the public scheme catalogue and development-project register; other sections remain clearly identified demo experiences.
 
 ## Run the current frontend
 
@@ -11,11 +11,18 @@ npm run dev
 
 Vite prints the local URL to open in a browser. Do not open `index.html` directly: React JSX must be served and compiled by Vite.
 
-The frontend uses demo data when `VITE_API_BASE_URL` is empty. When the backend is ready, copy `.env.example` to `.env`, set the API base URL, then restart Vite:
+The frontend now attempts to connect to the implemented backend at `http://localhost:5001/api/v1`. It keeps the matching demo records if the API is unavailable, returns no records, or needs configuration. To configure a local backend, copy `.env.example` to `.env`, set the API URL and the Panchayat UUID, then restart Vite:
 
 ```env
-VITE_API_BASE_URL=http://localhost:4000/api
+VITE_API_BASE_URL=http://localhost:5001/api/v1
+VITE_PANCHAYAT_ID=a0000000-0000-0000-0000-000000000001
 ```
+
+The scheme catalogue is public and can load without a Panchayat ID. The project API is public at the route level, but the backend tenant middleware still requires `X-Panchayat-ID`; the frontend sends it from `VITE_PANCHAYAT_ID`. The development seed creates a clearly labelled demo Panchayat and demo projects at this UUID. Its `DEMO-` project codes, budgets and status are illustrative only. Replace the UUID and use verified source records for real Panchayats. The frontend reads the backend's `{ success, data }` response envelope, maps records into project cards, and keeps frontend demo data as a fallback if the request fails or returns no records.
+
+**Connected in this presentation build:** scheme catalogue (`GET /api/v1/schemes`) and public development projects (`GET /api/v1/projects`, with a configured Panchayat UUID).
+
+**Kept in demo mode for now:** grievance list/submission (requires authentication and a valid ward ID, while the current UI has no sign-in/ward selection); Gram Sabha suggestions and polls (the backend app does not mount those routes); dashboard scores, notices, opportunities, maps and other sample metrics (no corresponding connected public API is currently mounted).
 
 ## Current project structure
 
@@ -26,7 +33,7 @@ GramVikas/
 ├── index.html                   # Vite HTML entry point
 ├── package.json                 # Frontend scripts and dependencies
 ├── package-lock.json            # Locked frontend dependency versions
-├── README.md                    # Project setup, current structure and backend plan
+├── README.md                    # Setup, current structure and integration notes
 └── src/
     ├── App.jsx                  # App shell, navigation, pages, forms and demo flows
     ├── data.js                  # Illustrative sample records used by the prototype
@@ -35,96 +42,97 @@ GramVikas/
     ├── components/
     │   └── DevelopmentChart.jsx # Lazy-loaded sample chart for the SDG dashboard
     └── services/
-        └── api.js               # Shared fetch client and starter endpoint functions
+        ├── api.js               # Shared fetch client, envelope handling and endpoint functions
+        └── adapters.js          # Maps backend scheme/project records to the current UI model
+
+backend/
+├── package.json                 # Express + TypeScript scripts and dependencies
+├── .env.example                 # Local server/database configuration template
+├── scripts/                     # Applies SQL schemas and seed data from docs/
+├── src/
+│   ├── server.ts, app.ts         # HTTP server, middleware and mounted API routes
+│   ├── config/                   # Environment validation
+│   ├── core/                     # Database, request context, errors, events and middleware
+│   └── modules/                  # Auth, grievances, development, infrastructure, schemes, verification, assisted access
+└── tests/                        # Backend unit and API integration tests
+
+docs/
+├── architecture/schema/          # PostgreSQL schema files
+├── architecture/seeds/           # Jurisdiction, scheme and explicitly illustrative project seed data
+├── architecture/                 # System architecture and API specification
+└── domain/                       # Domain, module, workflow, RBAC and entity documentation
 ```
 
 ### What the current files do
 
 - `src/App.jsx` contains the navigation and the Overview, Grievances, Projects, Schemes, Gram Sabha, Development, Map, Notices, Settings and Opportunities screens. It also contains the demo forms and modal interactions.
-- `src/data.js` supplies mock grievances, projects, schemes, Gram Sabha meetings, activity and nine SDG themes. Replace these imports with API-backed state as endpoints become available.
-- `src/services/api.js` centralizes the base URL, JSON requests, error handling and starter calls such as `createGrievance()` and `fetchProjects()`.
+- `src/data.js` supplies mock grievances, projects, schemes, Gram Sabha meetings, activity and nine SDG themes. The connected scheme and project views use API-backed state when records are returned; other sections still use these samples.
+- `src/services/api.js` centralizes the base URL, tenant/auth headers, JSON requests, response-envelope handling and endpoint calls.
+- `src/services/adapters.js` translates backend scheme and project field names/status codes to the existing frontend card shape.
 - `src/components/DevelopmentChart.jsx` isolates the Recharts visualization and is loaded only when needed.
 - `src/styles.css` contains the design system, component styles and mobile layouts.
 
 The interface has entry points for grievance reporting/tracking, public projects and spending, scheme discovery, Gram Sabha participation, village development indicators, notices, local opportunities and a map. Forms and page navigation work as a frontend prototype. Most lists, account features and map data are still illustrative or placeholder content.
 
-All figures, records, locations, poll results and dates currently displayed are demo values, not verified Panchayat records. The Hindi control currently explains that full Hindi content is planned; it does not translate the interface yet.
+The Overview, grievance, Gram Sabha, dashboard, notice, opportunity and map examples remain illustrative. Backend scheme records are seeded catalogue entries; backend project rows with `DEMO-` codes are illustrative seed data, not verified Panchayat records. The Hindi control currently explains that full Hindi content is planned; it does not translate the interface yet.
 
-## Proposed future backend structure
+## Current backend implementation
 
-This is a suggested structure for the next phase, not a description of files already present. It uses a modular Express + TypeScript API, PostgreSQL, and an ORM or query layer selected by the backend team. The exact framework can change as long as the frontend API contract stays consistent.
+The backend is an implemented modular Express + TypeScript API using PostgreSQL and the `pg` query layer. SQL schemas and seed scripts live under `docs/architecture/`; `npm run migrate` and `npm run seed` in `backend/` load them. The project seed records use `DEMO-` codes and are illustrative, not official Panchayat records.
 
 ```text
 backend/
-├── package.json
-├── tsconfig.json
-├── .env.example
-├── README.md
-├── migrations/                  # Versioned database schema changes
-├── seeds/                       # Explicit demo/development data only
+├── package.json, tsconfig.json, vitest.config.ts
+├── scripts/
+│   ├── migrate.ts               # Applies docs/architecture/schema/*.sql
+│   └── seed.ts                  # Applies docs/architecture/seeds/*.sql
 ├── src/
-│   ├── server.ts                # Starts the HTTP server
-│   ├── app.ts                   # Express setup, CORS, routes and error handling
-│   ├── config/
-│   │   ├── env.ts               # Validates environment configuration
-│   │   └── database.ts           # Creates the PostgreSQL connection
-│   ├── middleware/
-│   │   ├── authenticate.ts      # Verifies session/token
-│   │   ├── authorize.ts         # Checks role and Panchayat jurisdiction
-│   │   ├── validate.ts          # Validates request parameters and bodies
-│   │   ├── rate-limit.ts        # Limits abusive requests
-│   │   └── error-handler.ts     # Consistent API error responses
-│   ├── modules/
-│   │   ├── auth/                # Registration, login, session and recovery
-│   │   ├── users/               # Citizen and official profiles and roles
-│   │   ├── panchayats/          # Panchayat profile, wards and public dashboard
-│   │   ├── grievances/          # Reports, assignment, status history and verification
-│   │   ├── projects/            # Public works, progress, budgets and evidence
-│   │   ├── schemes/             # Scheme directory, sources and discovery guidance
-│   │   ├── gram-sabha/          # Meetings, agendas, suggestions, polls and outcomes
-│   │   ├── assets/              # Facilities, map locations and maintenance records
-│   │   ├── sdg/                 # Theme definitions, indicators and measurements
-│   │   ├── notices/             # Public announcements and alerts
-│   │   ├── opportunities/       # Jobs, training, SHGs and local services
-│   │   └── notifications/       # In-app notices and future SMS/email adapters
-│   ├── services/
-│   │   ├── file-storage.ts      # Private/public evidence storage adapter
-│   │   ├── audit-log.ts         # Records important administrative changes
-│   │   └── notifications.ts     # Provider-independent notification interface
-│   ├── shared/
-│   │   ├── http.ts              # Shared response/error types
-│   │   └── permissions.ts       # Roles and permission definitions
-│   └── tests/                   # Module and API integration tests
-└── uploads/                     # Local development only; production uses object storage
+│   ├── server.ts, app.ts        # Server startup, middleware, health and API routes
+│   ├── config/env.ts            # Environment validation
+│   ├── core/                    # Database, request context, errors, events and middleware
+│   └── modules/
+│       ├── auth/                # Registration and login
+│       ├── grievance/           # Grievance lifecycle
+│       ├── development/         # Projects, milestones, vouchers and summaries
+│       ├── infrastructure/      # Public asset register and maintenance
+│       ├── scheme/              # Public catalogue, eligibility and applications
+│       ├── verification/        # Citizen project verification
+│       └── assisted-access/     # Assisted service applications and tracking
+└── tests/                       # Unit and integration tests
 ```
 
-### Backend module responsibilities
+```text
+docs/
+├── architecture/schema/         # Six PostgreSQL schema files
+├── architecture/seeds/          # Jurisdiction, schemes and demo development projects
+├── architecture/                # System architecture and API specification
+└── domain/                      # Domain and module documentation
+```
 
-- **`auth` and `users`:** register/authenticate users and attach roles and jurisdiction. Never trust a Panchayat ID from the browser to decide access.
-- **`panchayats`:** serve public Panchayat and ward information and aggregate dashboard data from approved sources.
-- **`grievances`:** accept citizen reports, issue unique references, assign work, append status history and collect resolution verification.
-- **`projects` and `assets`:** expose public works, budgets, progress evidence, facility locations and maintenance history.
-- **`schemes`:** maintain scheme summaries with official source links and a reviewed/updated date. Eligibility responses should say “potential match” and direct citizens to official confirmation.
-- **`gram-sabha`:** manage meeting schedules, public suggestions, advisory polls and official proceedings as distinct record types.
-- **`sdg`:** define indicators with their source, period, unit and verification status; calculate only scores with documented methodology.
-- **`notices`, `opportunities` and `notifications`:** provide public announcements, locally reviewed opportunity listings and delivery integrations.
-- **`middleware`, `services` and `shared`:** keep security, file storage, audit logs, notifications and consistent API behavior reusable across modules.
+### Implemented backend modules
+
+- **Implemented and mounted:** `auth`, `grievance`, `development`, `infrastructure`, `scheme`, `verification` and `assisted-access`.
+- **Development:** public project reads, expenditure summary, milestone and voucher operations; write operations require authorized staff.
+- **Infrastructure:** public asset reads and restricted asset/fault operations.
+- **Not yet implemented as mounted API modules:** Gram Sabha, notices, opportunities and SDG dashboards. Their frontend views remain demo content.
 
 ## Frontend/backend connection
 
-The frontend calls the API through `src/services/api.js`. Configure the backend origin in `VITE_API_BASE_URL`; keep `/api` in that value. For local development, the backend should allow the Vite origin through CORS.
+The frontend calls the API through `src/services/api.js`. Configure `VITE_API_BASE_URL` and `VITE_PANCHAYAT_ID` in `.env`; keep the `/api/v1` prefix in the URL. The backend currently enables CORS for the Vite origin. Connected GET requests fall back to the sample data if the backend is offline, has no seeded records, or is missing tenant configuration.
 
-Suggested first integration sequence:
+Current integration status:
 
-1. Agree on the route paths, JSON fields, error shape and authentication approach.
-2. Implement `GET /api/grievances` and `POST /api/grievances` in the backend.
-3. Connect the grievance form to `createGrievance()` and show the server-returned reference.
-4. Connect the grievance list to `fetchGrievances()` and display server status/history.
-5. Repeat for projects, schemes and Gram Sabha, one module at a time.
+1. `GET /api/v1/schemes` is connected as a public read.
+2. `GET /api/v1/projects` is connected as a public read and requires `X-Panchayat-ID`; the local seed provides a demo tenant and two explicitly illustrative projects. The projects page supports status filters and expandable backend record details.
+3. Grievance APIs exist, but the current form/list remain demo-only until the frontend has authentication and a real ward UUID to satisfy backend validation.
+4. Gram Sabha routes are described in planning material but are not mounted in the current backend app, so those interactions remain demo-only.
+5. Dashboard, notices, opportunities and map data remain demo-only until corresponding backend endpoints/data are available.
 
-### Starter API contract
+For a later grievance integration, the frontend will need to send the backend's required `wardId`, `title`, canonical category enum and description, attach the authenticated bearer token, and display the returned tracking reference. Do not send sensitive complaints to public map/list views.
 
-These routes align with helper functions and integration notes in `src/services/api.js`. The backend team should confirm the details before implementing them.
+### API notes
+
+The following table records future frontend integration ideas. Routes marked here are not all mounted in the current backend; check `backend/src/app.ts` and `backend/src/modules/*/*.routes.ts` before relying on them.
 
 | Frontend need | Suggested endpoint | Example response |
 | --- | --- | --- |
@@ -144,4 +152,4 @@ Keep public records and citizen submissions labelled with `source` and `verifica
 
 ## Version control collaboration
 
-The frontend and future backend should be committed in the same project repository under separate directories. Use feature branches and small module-focused changes so the frontend and backend can be developed in parallel. Keep local `.env` files and uploaded evidence out of Git; commit `.env.example` files with placeholder values only.
+The frontend, backend and architecture docs are committed in the same project repository under separate directories. Use feature branches and small module-focused changes so the frontend and backend can be developed in parallel. Keep local `.env` files and uploaded evidence out of Git; commit `.env.example` files with placeholder values only.
